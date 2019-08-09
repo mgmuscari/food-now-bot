@@ -1,0 +1,19 @@
+{
+  "name": "foodbank",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "twilio-run --env"
+  },
+  "devDependencies": {
+    "twilio-run": "^2.0.0-rc.5"
+  },
+  "engines": {
+    "node": "8.10.0"
+  },
+  "dependencies": {
+    "spatialite": "^0.1.0",
+    "sqlite3": "^4.0.9"
+  }
+}
