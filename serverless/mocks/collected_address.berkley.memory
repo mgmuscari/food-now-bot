@@ -1,0 +1,16 @@
+Memory={
+    "twilio": {
+	"collected_data": {
+	    "user_location": {
+		"answers": {
+		    "city": {
+			"answer": "Berkley"
+		    },
+		    "address": {
+			"answer": "1401 66th St"
+		    }
+		}
+	    }
+	}
+    }
+}

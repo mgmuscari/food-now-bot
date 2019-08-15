@@ -1,9 +1,15 @@
+
+String.prototype.capitalize = function() {
+  return this.charAt(0).toUpperCase() + this.slice(1)
+}
+
 exports.handler = function(context, event, callback) {
     const fs = require('fs');
     const spatialite = require('spatialite');
     const https = require('https');
     const md5file = require('md5-file');
     const admzip = require('adm-zip');
+    const stringsim = require('string-similarity');
     
     console.log(event.Memory);
     
@@ -50,12 +56,19 @@ exports.handler = function(context, event, callback) {
 		
 	    console.log("Querying sqlite database...");
 	    
-	    let db = new spatialite.Database('/tmp/pantries.sqlite');
+	    var db = new spatialite.Database('/tmp/pantries.sqlite');
 
 	    let query = `select *, Distance(coords, MakePoint(${address_lat}, ${address_lng})) as dist from pantries order by dist asc limit 1`
+
+	    var matchedCity = null;
 	    
 	    db.spatialite(function(err) {
-		db.each(query, function(err, row) {
+		db = db.all("select lower(name) as name from cities", function(err, rows) {
+		    console.log(rows);
+		    matchedCity = stringsim.findBestMatch(city.toLowerCase(), rows.map(r => r['name']))['bestMatch']['target'].capitalize();
+		    console.log(matchedCity);
+		});
+		db = db.each(query, function(err, row) {
 		    console.log(err);
 		    console.log("Row from sqlite:" + JSON.stringify(row));
 
@@ -78,6 +91,7 @@ exports.handler = function(context, event, callback) {
 		    };
 		    callback(null, responseObject);
 		});
+		
 	    });
 	    
             
@@ -85,6 +99,19 @@ exports.handler = function(context, event, callback) {
 	
     }).on("error", (err) => {
 	console.log("Error: " + err.message);
+	let errorMessage = "I'm sorry, something went wrong."
+//	let now = new Date();
+//	let tz = 
+//	    if (now.getUTCDay()) {
+//	    }
+	
+	let responseObject = {
+	    "actions": [
+		{
+		    "say": errorMessage
+		}
+	    ]
+	}
     });
     
 };
