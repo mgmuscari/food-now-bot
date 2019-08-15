@@ -147,6 +147,78 @@
                 }
             ]
         },
+	{
+	    "uniqueName" : "need_food",
+	    "friendlyName" : "Need Food Response",
+	    "samples": [
+		{
+		    "language": "en-US",
+		    "taggedText": "i need food"
+		},
+		{
+		    "language": "en-US",
+		    "taggedText": "i'm hungry"
+		},
+		{
+		    "language": "en-US",
+		    "taggedText": "where can i get food"
+		},
+		{
+		    "language": "en-US",
+		    "taggedText": "help i'm hungry"
+		},
+		{
+		    "language": "en-US",
+		    "taggedText": "help me eat"
+		},
+		{
+		    "language": "en-US",
+		    "taggedText": "i need to eat"
+		},
+		{
+		    "language": "en-US",
+		    "taggedText": "i need to get some food"
+		},
+		{
+		    "language": "en-US",
+		    "taggedText": "help me find food"
+		}
+	    ],
+	    "actions": {
+		"actions": [
+		{
+		    "say": "I can help you find food."
+		},
+		{
+		    "collect": {
+			"name": "user_location",
+			"questions": [
+			    {
+				"question": "What city do you live in?",
+				"name": "city",
+				"type": "Twilio.CITY"
+			    }
+			],
+			"on_complete": {
+			    "redirect": "task://food_in_city"
+			}
+		    }
+		}
+		]
+	    }
+	},
+	{
+	    "uniqueName": "food_in_city",
+	    "friendlyName": "Find food in city",
+	    "actions": {
+		"actions" : [
+		    {
+			"redirect": "https://foodbank-8297-dev.twil.io/find-food-in-city"
+		    }
+		]
+	    },
+	    "samples": []
+	},
         {
             "uniqueName" : "greeting",
             "actions" : {

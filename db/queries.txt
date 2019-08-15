@@ -1,0 +1,6 @@
+
+find a city:
+select id from cities where lower(name)=lower('Berkeley');
+
+find a pantry under city restriction:
+select id, name from pantries where ((select count(1)==0 from city_restrictions where pantry_id=pantries.id) or (select count(1)>0 from city_restrictions where pantry_id=pantries.id and city_id=3)) and ((select count(1)==0 from hours where pantry_id=pantries.id) or (select count(1)>0 from hours where pantry_id=pantries.id and day=3 and open_time<'14:32:00' and close_time>'14:32:00'));

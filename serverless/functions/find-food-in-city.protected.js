@@ -20,7 +20,7 @@ exports.handler = function(context, event, callback) {
 					}
 				],
 				"on_complete": {
-					"redirect": "https://pumpkin-kingfisher-8548.twil.io/got_an_address"
+					"redirect": "https://foodbank-8297-dev.twil.io/geo/get-food-pantry"
 				}
 			}
             }

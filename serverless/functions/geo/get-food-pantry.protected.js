@@ -2,7 +2,9 @@ exports.handler = function(context, event, callback) {
     const fs = require('fs');
     const spatialite = require('spatialite');
     const https = require('https');
-
+    const md5file = require('md5-file');
+    const admzip = require('adm-zip');
+    
     console.log(event.Memory);
     
     let memory = JSON.parse(event.Memory);
@@ -16,6 +18,8 @@ exports.handler = function(context, event, callback) {
     
     let google_link = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${location}&inputtype=textquery&fields=geometry,formatted_address&key=${context.GMAPS_TOKEN}`
 
+    console.log("Going to google...");
+    
     https.get(google_link, (resp) => {
 	let data = '';
 	
@@ -35,14 +39,24 @@ exports.handler = function(context, event, callback) {
 
 	    // Get the path to the Private Asset
 	    let assets = Runtime.getAssets();
-	    let file = Runtime.getAssets()['/pantries.sqlite'];
+
+	    if (!fs.existsSync('/tmp/pantries.sqlite')) {
+		let file = Runtime.getAssets()['/pantries.sqlite.zip'];
+		let zip = new admzip(file.path);
+		let entries = zip.getEntries();
+		let database = entries[0];
+		fs.writeFileSync('/tmp/pantries.sqlite', database.getData());
+	    }
+		
+	    console.log("Querying sqlite database...");
 	    
-	    let db = new spatialite.Database(file.path);
+	    let db = new spatialite.Database('/tmp/pantries.sqlite');
 
 	    let query = `select *, Distance(coords, MakePoint(${address_lat}, ${address_lng})) as dist from pantries order by dist asc limit 1`
 	    
 	    db.spatialite(function(err) {
 		db.each(query, function(err, row) {
+		    console.log(err);
 		    console.log("Row from sqlite:" + JSON.stringify(row));
 
 		    let responseObject = {
