@@ -57,12 +57,13 @@ function findPantries(db, lat, lon) {
 
 function findOpenPantries(db, lat, lon, time, city) {
     let query = "select * from pantries inner join hours on pantries.id=hours.pantry_id left outer join city_restrictions on pantries.id=city_restrictions.pantry_id where (hours.year=? or hours.year is null) and (hours.month is null or hours.month=?) and (hours.day_of_month=? or hours.day_of_month is null) and (hours.week is null or hours.week = ?) and (hours.day_of_week is null or hours.day_of_week=?) and (hours.open_time < ? and hours.close_time > ?) and (city_restrictions.city_id in (select id from cities where name=?) or city_restrictions.city_id is null)";
-    let year = time.getYear();
-    let month = time.getMonth();
+    let year = time.getUTCFullYear();
+    let month = time.getMonth() + 1;
     let day_of_month = time.getDate();
     let week = Math.ceil(day_of_month / 7);
     let day_of_week = time.getDay();
-    let time_of_day = time.toTimeString().substr(0,7);
+    let time_of_day = time.toTimeString().substr(0,8);
+    console.log(`I think it's ${year} ${month} ${day_of_month} ${week} ${day_of_week} ${time_of_day}`)
     return new Promise((complete, reject) => {
 	db = db.all(query, [year, month, day_of_month, week, day_of_week, time_of_day, time_of_day, city], function(err, rows) {
 	    if(err) {
@@ -234,10 +235,16 @@ exports.handler = function(context, event, callback) {
 	//let pantries = await findPantries(db, address_lat, address_lng);
 	let pantries = await findOpenPantries(db, address_lat, address_lng, time, matchedCity);
 
+	if (pantries.length == 0) {
+	    pantries = findPantries(db, address_lat, address_lng, matchedCity)
+	}
+	
+	
 	let validPantriesPromises = pantries.map((pantry) => {return {"pantry": pantry, "valid": isValidPantryForCity(db, city, pantry.id)}});
 	let validPantries = validPantriesPromises.filter(async function(pantry) {return await pantry.valid})
 
 	console.log(validPantries)
+
 	
 	let pantry = validPantries[0].pantry
 
