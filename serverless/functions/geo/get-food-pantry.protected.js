@@ -43,7 +43,7 @@ function matchCity(db, city) {
 }
 
 function findPantries(db, lat, lon) {
-    let query = `select *, Distance(coords, MakePoint(${lat}, ${lon})) as dist from pantries order by dist asc`
+    let query = `select *, Distance(coords, MakePoint(${lat}, ${lon})) as dist from pantries order by dist asc limit 30`
     return new Promise((complete, reject) => {
 	db = db.all(query, function(err, rows) {
 	    if(err) {
@@ -139,7 +139,7 @@ exports.handler = function(context, event, callback) {
 	    
 	let validPantriesPromises = pantries.map((pantry) => {return {"pantry": pantry, "valid": isValidPantryForCity(db, city, pantry.id)}});
 	let validPantries = validPantriesPromises.filter(async function(pantry) {return await pantry.valid})
-	console.log(validPantries)
+
 	let pantry = validPantries[0].pantry
 	
 	respondWithPantry(formatted_address, address_lat, address_lng, pantry.name, pantry.address, pantry.city, pantry.state, callback);
