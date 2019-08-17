@@ -55,6 +55,100 @@ function findPantries(db, lat, lon) {
     });
 }
 
+function findOpenPantries(db, lat, lon, time, city) {
+    let query = "select * from pantries inner join hours on pantries.id=hours.pantry_id left outer join city_restrictions on pantries.id=city_restrictions.pantry_id where (hours.year=? or hours.year is null) and (hours.month is null or hours.month=?) and (hours.day_of_month=? or hours.day_of_month is null) and (hours.week is null or hours.week = ?) and (hours.day_of_week is null or hours.day_of_week=?) and (hours.open_time < ? and hours.close_time > ?) and (city_restrictions.city_id in (select id from cities where name=?) or city_restrictions.city_id is null)";
+    let year = time.getYear();
+    let month = time.getMonth();
+    let day_of_month = time.getDate();
+    let week = Math.ceil(day_of_month / 7);
+    let day_of_week = time.getDay();
+    let time_of_day = time.toTimeString().substr(0,7);
+    return new Promise((complete, reject) => {
+	db = db.all(query, [year, month, day_of_month, week, day_of_week, time_of_day, time_of_day, city], function(err, rows) {
+	    if(err) {
+		reject(err);
+	    } else {
+		complete(rows);
+	    }
+	});
+    });
+}
+
+function getPantryHours(db, pantry_id, month, year) {
+    let query = "select week, day_of_week, open_time, close_time from hours where pantry_id=? and (month is null or month=?) and (year is null or year=?) group by week, day_of_week, open_time, close_time order by week, day_of_week, open_time"
+    let hoursPromise = new Promise((complete, reject) => {
+	db.all(query, [pantry_id, month, year], function(err, rows) {
+	    if(err) {
+		reject(err);
+	    } else {
+		complete(rows);
+	    }
+	});
+    });
+    return hoursPromise;
+}
+
+function getHoursMessage(hours) {
+    let message = "is open "
+    console.log(hours)
+    hours.forEach(
+	(hour) => {
+	    message += "on "
+	    if (hour.week) {
+		message += `the ${weekStrings[hour.week]} `
+	    }
+	    if (hour.week && hour.day_of_week) {
+		message += `${dayStrings[hour.day_of_week]} of this month `
+	    } else if (how.day_of_week) {
+		message += `${dayStrings[hour.day_of_week]}s`
+	    }
+	    let open_hour = parseInt(hour.open_time.substr(0,2))
+	    let open_minutes = parseInt(hour.open_time.substr(3,4))
+	    message += `from ${toAmPmString(open_hour, open_minutes)} to `
+	    let close_hour = parseInt(hour.close_time.substr(0,2))
+	    let close_minutes = parseInt(hour.close_time.substr(3,4))
+	    message += `${toAmPmString(close_hour, close_minutes)}. `
+	}
+    )
+    return message;
+}
+
+function toAmPmString(hour, minutes) {
+    let hourStr = `${hour}`
+    let minutesStr = ""
+    let ampm = "AM"
+    if ( hour > 11 ) {
+	if ( hour == 12 ) {
+	    hourStr = "12"
+	} else {
+	    hourStr = `${hour - 12}`
+	    ampm = "PM"
+	}
+    }
+    if (minutes > 0) {
+	minutesStr = `:${minutes}`
+    }
+    return `${hourStr}${minutesStr}${ampm}`
+}
+
+let weekStrings = {
+    1: "first",
+    2: "second",
+    3: "third",
+    4: "fourth",
+    5: "fifth"
+}
+
+let dayStrings = {
+    0: "Sunday",
+    1: "Monday",
+    2: "Tuesday",
+    3: "Wednesday",
+    4: "Thursday",
+    5: "Friday",
+    6: "Saturday"
+}
+
 function isValidPantryForCity(db, pantry, city) {
     let cityPromise = new Promise((complete, reject) => {
 	let query = "select id from cities where name=? limit 1"
@@ -80,11 +174,11 @@ function isValidPantryForCity(db, pantry, city) {
     });    
 }
 
-function respondWithPantry(formatted_address, lat, lng, pantry_name, pantry_address, pantry_city, pantry_state, callback) {
+function respondWithPantry(formatted_address, lat, lng, pantry_name, pantry_address, pantry_city, pantry_state, hours, callback) {
     let responseObject = {
 	"actions": [
 	    {
-		"say": `I found ${pantry_name} at ${pantry_address} in ${pantry_city}, ${pantry_state}`
+		"say": `I found ${pantry_name} at ${pantry_address} in ${pantry_city}, ${pantry_state}. It ${hours}`
 	    },
 	    {
 		"remember": {
@@ -134,15 +228,26 @@ exports.handler = function(context, event, callback) {
 	let address_geo = address_res.geometry
 	let address_lat = address_geo.location.lat
 	let address_lng = address_geo.location.lng
-        
-	let pantries = await findPantries(db, address_lat, address_lng);
-	    
+
+	let time = new Date("2019-08-16 18:00:00 PDT")
+	
+	//let pantries = await findPantries(db, address_lat, address_lng);
+	let pantries = await findOpenPantries(db, address_lat, address_lng, time, matchedCity);
+
 	let validPantriesPromises = pantries.map((pantry) => {return {"pantry": pantry, "valid": isValidPantryForCity(db, city, pantry.id)}});
 	let validPantries = validPantriesPromises.filter(async function(pantry) {return await pantry.valid})
 
-	let pantry = validPantries[0].pantry
+	console.log(validPantries)
 	
-	respondWithPantry(formatted_address, address_lat, address_lng, pantry.name, pantry.address, pantry.city, pantry.state, callback);
+	let pantry = validPantries[0].pantry
+
+	let month = time.getMonth() + 1
+	let year = time.getUTCFullYear()
+	let hoursResults = await getPantryHours(db, pantry.id, month, year)
+
+	let hoursMessage = getHoursMessage(hoursResults)
+	
+	respondWithPantry(formatted_address, address_lat, address_lng, pantry.name, pantry.address, pantry.city, pantry.state, hoursMessage, callback);
 	
 	
     });
