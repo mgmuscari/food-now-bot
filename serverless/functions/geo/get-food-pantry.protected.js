@@ -4,6 +4,9 @@ const request = require('request');
 const md5file = require('md5-file');
 const admzip = require('adm-zip');
 const stringsim = require('string-similarity');
+const tzjs = require('timezone-js');
+const targz = require('targz');
+const tzdata = require('tzdata');
 
 String.prototype.capitalize = function() {
   return this.charAt(0).toUpperCase() + this.slice(1)
@@ -55,6 +58,10 @@ function findPantries(db, lat, lon) {
     });
 }
 
+function nextOpenDate(pantry, hours) {
+    
+}
+
 function findOpenPantries(db, lat, lon, time, city) {
     let query = "select * from pantries inner join hours on pantries.id=hours.pantry_id left outer join city_restrictions on pantries.id=city_restrictions.pantry_id where (hours.year=? or hours.year is null) and (hours.month is null or hours.month=?) and (hours.day_of_month=? or hours.day_of_month is null) and (hours.week is null or hours.week = ?) and (hours.day_of_week is null or hours.day_of_week=?) and (hours.open_time < ? and hours.close_time > ?) and (city_restrictions.city_id in (select id from cities where name=?) or city_restrictions.city_id is null)";
     let year = time.getUTCFullYear();
@@ -90,22 +97,21 @@ function getPantryHours(db, pantry_id, month, year) {
 }
 
 function getHoursMessage(hours) {
-    let message = "is open "
+    let message = "is open: "
     console.log(hours)
     hours.forEach(
 	(hour) => {
-	    message += "on "
 	    if (hour.week) {
-		message += `the ${weekStrings[hour.week]} `
+		message += `The ${weekStrings[hour.week]} `
 	    }
 	    if (hour.week && hour.day_of_week) {
 		message += `${dayStrings[hour.day_of_week]} of this month `
-	    } else if (how.day_of_week) {
+	    } else if (hour.day_of_week) {
 		message += `${dayStrings[hour.day_of_week]}s`
 	    }
 	    let open_hour = parseInt(hour.open_time.substr(0,2))
 	    let open_minutes = parseInt(hour.open_time.substr(3,4))
-	    message += `from ${toAmPmString(open_hour, open_minutes)} to `
+	    message += ` from ${toAmPmString(open_hour, open_minutes)} to `
 	    let close_hour = parseInt(hour.close_time.substr(0,2))
 	    let close_minutes = parseInt(hour.close_time.substr(3,4))
 	    message += `${toAmPmString(close_hour, close_minutes)}. `
@@ -121,6 +127,7 @@ function toAmPmString(hour, minutes) {
     if ( hour > 11 ) {
 	if ( hour == 12 ) {
 	    hourStr = "12"
+	    ampm = "PM"
 	} else {
 	    hourStr = `${hour - 12}`
 	    ampm = "PM"
@@ -179,7 +186,7 @@ function respondWithPantry(formatted_address, lat, lng, pantry_name, pantry_addr
     let responseObject = {
 	"actions": [
 	    {
-		"say": `I found ${pantry_name} at ${pantry_address} in ${pantry_city}, ${pantry_state}. It ${hours}`
+		"say": `I found ${pantry_name} at ${pantry_address} in ${pantry_city}, ${pantry_state}. It ${hours}`,
 	    },
 	    {
 		"remember": {
@@ -207,6 +214,10 @@ exports.handler = function(context, event, callback) {
 
     // Get the path to the Private Asset
     let assets = Runtime.getAssets();
+
+    var _tz = tzjs.timezone;
+    _tz.loadingScheme = _tz.loadingSchemes.MANUAL_LOAD;
+    _tz.loadZoneDataFromObject(tzdata);
     
     if (!fs.existsSync('/tmp/pantries.sqlite')) {
 	let file = Runtime.getAssets()['/pantries.sqlite.zip'];
@@ -216,10 +227,15 @@ exports.handler = function(context, event, callback) {
 	fs.writeFileSync('/tmp/pantries.sqlite', database.getData());
     }
 
+    
+
     var db = new spatialite.Database('/tmp/pantries.sqlite');
 
     db.spatialite(async function(err) {
 	let matchedCity = await matchCity(db, city);
+
+	//let time = new Date("2019-08-16 11:00:00 PDT")
+
 	let addressLatLon = await getAddressLatLon(context, address, matchedCity, "CA");
 	console.log(addressLatLon);
 	
@@ -230,7 +246,8 @@ exports.handler = function(context, event, callback) {
 	let address_lat = address_geo.location.lat
 	let address_lng = address_geo.location.lng
 
-	let time = new Date("2019-08-16 18:00:00 PDT")
+	let time = Date.now()
+	time = new tzjs.Date(time, 'America/Los_Angeles');
 	
 	//let pantries = await findPantries(db, address_lat, address_lng);
 	let pantries = await findOpenPantries(db, address_lat, address_lng, time, matchedCity);

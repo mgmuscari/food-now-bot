@@ -17,6 +17,9 @@
     "md5-file": "^4.0.0",
     "spatialite": "^0.1.0",
     "sqlite3": "^4.0.9",
-    "string-similarity": "^3.0.0"
+    "string-similarity": "^3.0.0",
+    "targz": "^1.0.1",
+    "timezone-js": "^0.4.13",
+    "tzdata": "^1.0.17"
   }
 }
