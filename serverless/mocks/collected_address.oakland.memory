@@ -1,6 +1,9 @@
 Memory={
     "twilio": {
 	"collected_data": {
+  	    "matchedCity": "Oakland",
+	    "user_geo": {"lat":37.797137,"lng":-122.2047692},
+	    "formatted_address": "1401 66th St, Berkeley, CA, 94702",
 	    "user_location": {
 		"answers": {
 		    "city": {

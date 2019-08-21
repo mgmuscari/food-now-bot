@@ -8,45 +8,10 @@ const tzjs = require('timezone-js');
 const targz = require('targz');
 const tzdata = require('tzdata');
 
-String.prototype.capitalize = function() {
-  return this.charAt(0).toUpperCase() + this.slice(1)
-}
 
-function getAddressLatLon(context, address, city, state) {
-    let address_formatted = encodeURI(address);
-    let location = `${address_formatted},%20${city},%20${state}`;
-    let google_link = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${location}&inputtype=textquery&fields=geometry,formatted_address&key=${context.GMAPS_TOKEN}`;
-    console.log(`Google link: ${google_link}`);
-    return new Promise(
-	function(resolve, reject) {
-	    request.get({"url": google_link}, (err, resp, body) => {
-		if(err) {
-		    console.log(`Got error from google: ${err}`);
-		    reject(console.log(err));
-		} else {
-		    console.log(`Got result from google: ${body}`);
-		    resolve(JSON.parse(body));
-		}
-		
-	    })
-	});
-}
-
-function matchCity(db, city) {
-    return matchedCityPromise = new Promise(function(complete, reject) {
-	db = db.all("select lower(name) as name from cities", function(err, rows) {
-	    if(err) {
-		reject(err);
-	    } else {
-		let matchedCity = stringsim.findBestMatch(city.toLowerCase(), rows.map(r => r['name']))['bestMatch']['target'].capitalize();
-		complete(matchedCity);
-	    }
-	});
-    });
-}
 
 function findPantries(db, lat, lon) {
-    let query = `select *, Distance(coords, MakePoint(${lat}, ${lon})) as dist from pantries order by dist asc limit 30`
+    let query = `select *, Distance(coords, MakePoint(${lat}, ${lon})) as dist from pantries order by dist asc limit 10`
     return new Promise((complete, reject) => {
 	db = db.all(query, function(err, rows) {
 	    if(err) {
@@ -58,21 +23,79 @@ function findPantries(db, lat, lon) {
     });
 }
 
-function nextOpenDate(pantry, hours) {
-    
+let timeScopes = {
+    year: 0,
+    month: 1,
+    week: 2,
+    day: 3,
+    hours: 4,
+    later: 5
 }
 
-function findOpenPantries(db, lat, lon, time, city) {
-    let query = "select * from pantries inner join hours on pantries.id=hours.pantry_id left outer join city_restrictions on pantries.id=city_restrictions.pantry_id where (hours.year=? or hours.year is null) and (hours.month is null or hours.month=?) and (hours.day_of_month=? or hours.day_of_month is null) and (hours.week is null or hours.week = ?) and (hours.day_of_week is null or hours.day_of_week=?) and (hours.open_time < ? and hours.close_time > ?) and (city_restrictions.city_id in (select id from cities where name=?) or city_restrictions.city_id is null)";
-    let year = time.getUTCFullYear();
-    let month = time.getMonth() + 1;
-    let day_of_month = time.getDate();
-    let week = Math.ceil(day_of_month / 7);
-    let day_of_week = time.getDay();
-    let time_of_day = time.toTimeString().substr(0,8);
-    console.log(`I think it's ${year} ${month} ${day_of_month} ${week} ${day_of_week} ${time_of_day}`)
+
+function findOpenPantries(db, lat, lon, time, city, timeScope = timeScopes.hours) {
+
+    let coordValues = [lat, lon]
+    let yearFilter = '(hours.year=? or hours.year is null)'
+    let yearValue = [time.getUTCFullYear()]
+    let monthFilter = '(hours.month=? or hours.month is null)'
+    let monthValue = [time.getMonth() + 1]
+    let weekFilter = '(hours.week=? or hours.week is null)'
+    let weekValue = Math.ceil(time.getDate() / 7)
+    let dayFilter = '(hours.day_of_month=? or hours.day_of_month is null) and (hours.day_of_week=? or hours.day_of_week is null)'
+    let dayValues = [time.getDate(), time.getDay()]
+    let hoursFilter = '(hours.open_time < ? and hours.close_time > ?)'
+    let hoursValue = [time.toTimeString().substr(0,8), time.toTimeString().substr(0,8)]
+    let laterFilter = '(hours.open_time > ?)'
+    let laterValue = [time.toTimeString().substr(0,8)]
+    let cityFilter = '(city_restrictions.city_id in (select id from cities where name=?) or city_restrictions.city_id is null)'
+    let cityValue = [city]
+
+    let predicates = []
+    let values = coordValues
+
+    if (timeScope >= timeScopes.year) {
+	predicates = predicates.concat(yearFilter)
+	values = values.concat(yearValue)
+    }
+
+    if (timeScope >= timeScopes.month) {
+	predicates = predicates.concat(monthFilter)
+	values = values.concat(monthValue)
+    }
+
+    if (timeScope >= timeScopes.week) {
+	predicates = predicates.concat(weekFilter)
+	values = values.concat(weekValue)
+    }
+
+    if (timeScope >= timeScopes.day) {
+	predicates = predicates.concat(dayFilter)
+	values = values.concat(dayValues)
+    }
+
+    if (timeScope == timeScopes.hours) {
+	predicates = predicates.concat(hoursFilter)
+	values = values.concat(hoursValue)
+    }
+
+    if (timeScope == timeScopes.later) {
+	predicates = predicates.concat(laterFilter)
+	values = values.concat(laterValue)
+    }
+
+    predicates = predicates.concat(cityFilter)
+    values = values.concat(cityValue)
+    let predicate = predicates.join(' and ')
+    
+    let query = `select *, Distance(pantries.coords, MakePoint(?, ?)) as dist from pantries inner join hours on pantries.id=hours.pantry_id left outer join city_restrictions on pantries.id=city_restrictions.pantry_id  where ${predicate} order by dist asc limit 10`
+
+    console.log(query)
+    //let query = "select * from pantries inner join hours on pantries.id=hours.pantry_id left outer join city_restrictions on pantries.id=city_restrictions.pantry_id where (hours.year=? or hours.year is null) and (hours.month is null or hours.month=?) and (hours.day_of_month=? or hours.day_of_month is null) and (hours.week is null or hours.week = ?) and (hours.day_of_week is null or hours.day_of_week=?) and (hours.open_time < ? and hours.close_time > ?) and (city_restrictions.city_id in (select id from cities where name=?) or city_restrictions.city_id is null)";
+
+    //console.log(`I think it's ${year} ${month} ${day_of_month} ${week} ${day_of_week} ${time_of_day}`)
     return new Promise((complete, reject) => {
-	db = db.all(query, [year, month, day_of_month, week, day_of_week, time_of_day, time_of_day, city], function(err, rows) {
+	db = db.all(query, values, function(err, rows) {
 	    if(err) {
 		reject(err);
 	    } else {
@@ -182,7 +205,7 @@ function isValidPantryForCity(db, pantry, city) {
     });    
 }
 
-function respondWithPantry(formatted_address, lat, lng, pantry_name, pantry_address, pantry_city, pantry_state, hours, callback) {
+function respondWithPantry(formatted_address, matchedCity, lat, lng, pantry_name, pantry_address, pantry_city, pantry_state, hours, callback) {
     let responseObject = {
 	"actions": [
 	    {
@@ -191,6 +214,7 @@ function respondWithPantry(formatted_address, lat, lng, pantry_name, pantry_addr
 	    {
 		"remember": {
 		    "user_formatted_address": formatted_address,
+		    "matchedCity": matchedCity,
 		    "user_geo": {"lat": lat, "lng": lng},
 		    "pantry_name": pantry_name,
 		    "pantry_address": pantry_address,
@@ -209,8 +233,12 @@ exports.handler = function(context, event, callback) {
     
     let memory = JSON.parse(event.Memory);
 
-    let address = memory.twilio.collected_data.user_location.answers.address.answer;
-    let city = memory.twilio.collected_data.user_location.answers.city.answer;
+    let formatted_address = memory.formatted_address;
+    
+    let address_geo = memory.user_geo;
+
+    //let address = memory.twilio.collected_data.user_location.answers.address.answer;
+    let matchedCity = memory.matchedCity;
 
     // Get the path to the Private Asset
     let assets = Runtime.getAssets();
@@ -227,24 +255,12 @@ exports.handler = function(context, event, callback) {
 	fs.writeFileSync('/tmp/pantries.sqlite', database.getData());
     }
 
-    
-
     var db = new spatialite.Database('/tmp/pantries.sqlite');
 
     db.spatialite(async function(err) {
-	let matchedCity = await matchCity(db, city);
-
 	//let time = new Date("2019-08-16 11:00:00 PDT")
-
-	let addressLatLon = await getAddressLatLon(context, address, matchedCity, "CA");
-	console.log(addressLatLon);
-	
-	let address_res = addressLatLon.candidates[0]
-	let formatted_address = address.formatted_address
-	
-	let address_geo = address_res.geometry
-	let address_lat = address_geo.location.lat
-	let address_lng = address_geo.location.lng
+	let address_lat = address_geo.lat
+	let address_lng = address_geo.lng
 
 	let time = Date.now()
 	time = new tzjs.Date(time, 'America/Los_Angeles');
@@ -253,11 +269,16 @@ exports.handler = function(context, event, callback) {
 	let pantries = await findOpenPantries(db, address_lat, address_lng, time, matchedCity);
 
 	if (pantries.length == 0) {
-	    pantries = findPantries(db, address_lat, address_lng, matchedCity)
+	    pantries = await findOpenPantries(db, address_lat, address_lng, time, matchedCity, timeScopes.later)
+	}
+
+	if (pantries.length == 0) {
+	    time = new tzjs.Date(time.getUTCFullYear(), time.getMonth(), time.getDate() + 1, 'America/Los_Angeles')
+	    pantries = await findOpenPantries(db, address_lat, address_lng, time, matchedCity, timeScopes.day)
 	}
 	
 	
-	let validPantriesPromises = pantries.map((pantry) => {return {"pantry": pantry, "valid": isValidPantryForCity(db, city, pantry.id)}});
+	let validPantriesPromises = pantries.map((pantry) => {return {"pantry": pantry, "valid": isValidPantryForCity(db, matchedCity, pantry.id)}});
 	let validPantries = validPantriesPromises.filter(async function(pantry) {return await pantry.valid})
 
 	console.log(validPantries)
@@ -271,7 +292,7 @@ exports.handler = function(context, event, callback) {
 
 	let hoursMessage = getHoursMessage(hoursResults)
 	
-	respondWithPantry(formatted_address, address_lat, address_lng, pantry.name, pantry.address, pantry.city, pantry.state, hoursMessage, callback);
+	respondWithPantry(formatted_address, matchedCity, address_lat, address_lng, pantry.name, pantry.address, pantry.city, pantry.state, hoursMessage, callback);
 	
 	
     });
